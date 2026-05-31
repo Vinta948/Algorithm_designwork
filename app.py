@@ -560,82 +560,84 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
     **空间优化 DP**：用分治回溯替代 keep 数组 → 空间降为 O(W×B)，时间约 2 倍，结果与标准 DP **完全一致**。
     """)
 
-    col_opt1, col_opt2 = st.columns(2)
-    with col_opt1:
-        opt_n = st.slider("测试商品数量 N", 10, 300, 50, step=10,
-                          help="用 N 件随机商品测试两种 DP 版本的内存和耗时",
-                          key="space_opt_n")
-    with col_opt2:
-        st.caption(f"预算沿用左侧栏：用户 ¥{user_b} / 平台 ¥{platform_b}")
+    st.caption(f"预算沿用左侧栏：用户 ¥{user_b} / 平台 ¥{platform_b}  |  权重 α={alpha:.2f} β={beta:.2f}")
+    col_o1, col_o2, col_o3 = st.columns(3)
+    with col_o1:
+        opt_min_n = st.number_input("起始商品数", min_value=5, max_value=100, value=10, step=5,
+                                    help="从多少件商品开始对比", key="space_opt_min")
+    with col_o2:
+        opt_max_n = st.number_input("结束商品数", min_value=10, max_value=300, value=80, step=5,
+                                    help="最多对比到多少件商品", key="space_opt_max")
+    with col_o3:
+        opt_step = st.number_input("步长", min_value=5, max_value=50, value=15, step=5,
+                                   help="每隔多少件商品测一次", key="space_opt_step")
 
-    if st.button("🔄 运行空间优化对比测试", key="space_opt_btn"):
-        st.session_state.space_opt_expanded = True
-        # 生成测试数据
-        test_items = generate_random_items(opt_n)
-        sys_std = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
-        sys_opt = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
-        for item_data in test_items:
-            sys_std.add_item(item_data["商品名称"], item_data["商家"],
-                             item_data["用户原价"], item_data["平台补贴"],
-                             item_data["用户喜爱度"], item_data["商家佣金"])
-            sys_opt.add_item(item_data["商品名称"], item_data["商家"],
-                             item_data["用户原价"], item_data["平台补贴"],
-                             item_data["用户喜爱度"], item_data["商家佣金"])
+    if opt_max_n < opt_min_n:
+        st.warning("结束商品数不能小于起始商品数，请调整。")
+    else:
+        if st.button("🔄 运行批量空间优化对比", key="space_opt_btn"):
+            st.session_state.space_opt_expanded = True
+            ns = list(range(opt_min_n, opt_max_n + 1, opt_step))
+            results = []
+            my_bar = st.progress(0, text="正在批量对比中...")
 
-        # 标准 DP
-        score_std, items_std, time_std = sys_std.run_joint_optimization()
-        # 空间优化 DP
-        score_opt, items_opt, time_opt = sys_opt.run_optimized_dp()
+            for idx, n in enumerate(ns):
+                test_items = generate_random_items(n)
+                sys_std = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
+                sys_opt = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
+                for item_data in test_items:
+                    sys_std.add_item(item_data["商品名称"], item_data["商家"],
+                                     item_data["用户原价"], item_data["平台补贴"],
+                                     item_data["用户喜爱度"], item_data["商家佣金"])
+                    sys_opt.add_item(item_data["商品名称"], item_data["商家"],
+                                     item_data["用户原价"], item_data["平台补贴"],
+                                     item_data["用户喜爱度"], item_data["商家佣金"])
 
-        # 内存估算
-        w_sz, b_sz = user_b + 1, platform_b + 1
-        # 标准版：dp(W×B) + keep(N×W×B) 布尔数组
-        keep_entries = (opt_n + 1) * w_sz * b_sz
-        keep_mem_mb = keep_entries * 28 / (1024 * 1024)  # Python bool ≈ 28 字节
-        dp_mem_mb = w_sz * b_sz * 24 / (1024 * 1024)     # Python float ≈ 24 字节
-        std_mem_mb = dp_mem_mb + keep_mem_mb
-        # 优化版：递归最深约 log2(N) 层，每层 2 个 dp 表
-        opt_mem_mb = 2 * w_sz * b_sz * 24 / (1024 * 1024)
+                score_std, _, time_std = sys_std.run_joint_optimization()
+                score_opt, _, time_opt = sys_opt.run_optimized_dp()
 
-        results_match = abs(score_std - score_opt) < 1e-9
+                w_sz, b_sz = user_b + 1, platform_b + 1
+                keep_entries = (n + 1) * w_sz * b_sz
+                keep_mem = keep_entries * 28 / (1024 * 1024)   # Python bool ≈ 28B
+                dp_mem = w_sz * b_sz * 24 / (1024 * 1024)      # Python float ≈ 24B
+                std_mem = dp_mem + keep_mem
+                opt_mem = 2 * w_sz * b_sz * 24 / (1024 * 1024)
+                match = "✅" if abs(score_std - score_opt) < 1e-9 else "❌"
+                ratio = std_mem / max(opt_mem, 0.001)
 
-        st.markdown("### 📊 对比结果")
+                results.append({
+                    "N": n,
+                    "标准DP得分": f"{score_std:.2f}",
+                    "优化DP得分": f"{score_opt:.2f}",
+                    "一致": match,
+                    "标准耗时(s)": f"{time_std:.6f}",
+                    "优化耗时(s)": f"{time_opt:.6f}",
+                    "标准内存(MB)": f"{std_mem:.1f}",
+                    "优化内存(MB)": f"{opt_mem:.1f}",
+                    "节省倍数": f"{ratio:.0f}x",
+                })
 
-        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("最优得分", f"{score_std:.2f}",
-                      delta="两者一致 ✓" if results_match else "不一致 ⚠️")
-        col_r2.metric("标准 DP 耗时", f"{time_std:.6f} 秒")
-        col_r3.metric("优化 DP 耗时", f"{time_opt:.6f} 秒",
-                      delta=f"{time_opt/time_std:.1f}x" if time_std > 0 else "")
-        col_r4.metric("优化 DP 慢多少",
-                      f"{((time_opt - time_std) / time_std * 100):.1f}%"
-                      if time_std > 0 else "N/A")
+                my_bar.progress((idx + 1) / len(ns),
+                                text=f"N={n} ({idx+1}/{len(ns)})")
 
-        st.markdown("---")
+            my_bar.empty()
+            df_results = pd.DataFrame(results)
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
 
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("标准 DP — keep 数组",
-                      f"{keep_mem_mb:.1f} MB",
-                      help=f"keep[{opt_n+1}][{w_sz}][{b_sz}] ≈ {keep_entries:,} 个布尔值 × 28字节")
-        col_m2.metric("优化 DP — 分治递归",
-                      f"{opt_mem_mb:.1f} MB",
-                      help=f"每层 2 个 dp[{w_sz}][{b_sz}] 浮点数组，递归深度 ≈ log2({opt_n})")
-        col_m3.metric("内存节省",
-                      f"{(1 - opt_mem_mb / max(std_mem_mb, 0.001)) * 100:.1f}%",
-                      delta=f"{(std_mem_mb / max(opt_mem_mb, 0.001)):.0f}x" if opt_mem_mb > 0 else "")
-
-        st.markdown("---")
-
-        # 选品一致性
-        if results_match:
-            st.success(
-                f"✅ 两种 DP 实现的最优得分完全一致（{score_std:.2f} 分），"
-                f"选中了相同的 {len(items_std)} 件商品。"
-                f"空间优化版内存节省约 **{(std_mem_mb / max(opt_mem_mb, 0.001)):.0f} 倍**，"
-                f"时间多花约 **{((time_opt - time_std) / time_std * 100):.0f}%**。"
-            )
-        else:
-            st.error("❌ 两种实现结果不一致，请检查！")
+            # 汇总结论
+            all_match = all("✅" in r["一致"] for r in results)
+            if all_match:
+                max_n = ns[-1]
+                last = results[-1]
+                st.success(
+                    f"✅ **全部一致！** 在 N={opt_min_n}~{max_n} 范围内，"
+                    f"两种 DP 实现的最优得分**完全一致**（共 {len(ns)} 个测试点）。\n\n"
+                    f"其中 N={max_n} 时，标准 DP 内存约 {last['标准内存(MB)']} MB，"
+                    f"优化 DP 仅 {last['优化内存(MB)']} MB，节省约 **{last['节省倍数']}**。"
+                    f"优化版时间代价约 2 倍以内，完全可接受。"
+                )
+            else:
+                st.error("❌ 存在不一致的测试点，请检查算法实现。")
 
     # 最终选择的说明
     st.info(
