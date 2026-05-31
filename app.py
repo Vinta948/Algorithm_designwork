@@ -548,7 +548,11 @@ if run_benchmark_button:
 # 4. DP 空间优化对比模块（分治回溯 vs 标准 DP）
 # ==========================================
 st.markdown("---")
-with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（Hirschberg 分治回溯）", expanded=False):
+if 'space_opt_expanded' not in st.session_state:
+    st.session_state.space_opt_expanded = False
+
+with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（Hirschberg 分治回溯）",
+                 expanded=st.session_state.space_opt_expanded):
     st.markdown("""
     **这个面板展示我们的算法迭代思考过程**，不是最终使用的版本。
 
@@ -565,6 +569,7 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
         st.caption(f"预算沿用左侧栏：用户 ¥{user_b} / 平台 ¥{platform_b}")
 
     if st.button("🔄 运行空间优化对比测试", key="space_opt_btn"):
+        st.session_state.space_opt_expanded = True
         # 生成测试数据
         test_items = generate_random_items(opt_n)
         sys_std = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
@@ -639,6 +644,7 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
                                    value=250, step=50, key="stress_n")
 
         if st.button("⚡ 运行极限压测", key="stress_btn"):
+            st.session_state.space_opt_expanded = True
             stress_items = generate_random_items(stress_n)
             # 标准 DP
             s_std = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
