@@ -106,6 +106,51 @@ class DualSidedECommerceSystem:
         end_time = time.perf_counter()
         return total_score, selected_items, end_time - start_time
 
+    def run_brute_force(self):
+        """暴力回溯穷举：枚举所有 2^N 种组合，找到全局最优解。
+        仅用于小规模 (N ≤ 20) 验证 DP 正确性，时间复杂度 O(2^N)。"""
+        N = len(self.items)
+        W = self.user_budget
+        B = self.platform_budget
+
+        start_time = time.perf_counter()
+        best_score = 0.0
+        best_mask = 0  # 位掩码记录最优组合
+
+        # 枚举所有子集：mask 从 0 到 2^N - 1
+        for mask in range(1 << N):
+            total_price = 0
+            total_subsidy = 0
+            total_score = 0.0
+            valid = True
+
+            for i in range(N):
+                if mask & (1 << i):
+                    item = self.items[i]
+                    total_price += item["price"]
+                    total_subsidy += item["subsidy"]
+
+                    # 剪枝：一旦超预算立即中止当前子集
+                    if total_price > W or total_subsidy > B:
+                        valid = False
+                        break
+
+                    total_score += self.alpha * item["satisfaction"] + self.beta * item["profit"]
+
+            if valid and total_score > best_score:
+                best_score = total_score
+                best_mask = mask
+
+        end_time = time.perf_counter()
+
+        # 回溯最优子集中的商品
+        selected_items = []
+        for i in range(N):
+            if best_mask & (1 << i):
+                selected_items.append(self.items[i])
+
+        return best_score, selected_items, end_time - start_time
+
 # ==========================================
 # 2. 辅助函数：生成随机商品数据
 # ==========================================
@@ -394,3 +439,81 @@ if run_benchmark_button:
     st.info("💡 **怎么看这张图：** 纵轴是对数刻度，DP 曲线（蓝）随商品增加迅速上升，贪心曲线（红）几乎平躺。"
             "这说明 DP 时间复杂度高但结果最优，贪心几乎不耗时但结果是近似解。"
             "上方表格列出了每个测试点的精确耗时和倍数关系。")
+
+# ==========================================
+# 4. DP 正确性验证模块（暴力回溯穷举）
+# ==========================================
+st.markdown("---")
+with st.expander("🔬 DP 正确性验证 — 暴力回溯穷举（独立验证工具）", expanded=False):
+    st.markdown("""
+    **这个面板不参与商品推荐**，仅用于验证 DP 算法的正确性。
+
+    **原理：** 暴力回溯枚举商品的所有子集（共 2^N 种），检查每种组合是否满足约束，找到真正的全局最优解。
+    由于复杂度为 O(2^N)，**仅适用于小规模商品数（建议 N ≤ 15）**。
+    在小规模下对比 DP 与暴力穷举的结果，若一致则证明 DP 实现正确。
+    """)
+
+    col_v1, col_v2, col_v3 = st.columns(3)
+    with col_v1:
+        verify_min_n = st.number_input("验证起始商品数", min_value=3, max_value=18, value=5, step=1,
+                                       help="从多少件商品开始验证")
+    with col_v2:
+        verify_max_n = st.number_input("验证结束商品数", min_value=4, max_value=20, value=12, step=1,
+                                       help="验证到多少件商品为止（建议 ≤15，超出会很慢）")
+    with col_v3:
+        verify_step = st.number_input("步长", min_value=1, max_value=5, value=2, step=1,
+                                      help="每隔多少件商品验证一次")
+
+    if verify_max_n < verify_min_n:
+        st.warning("结束商品数不能小于起始商品数，请调整。")
+    else:
+        run_verify = st.button("🔍 开始正确性验证")
+
+        if run_verify:
+            verify_ns = list(range(verify_min_n, verify_max_n + 1, verify_step))
+            verify_results = []
+
+            progress_bar = st.progress(0, text="正在进行正确性验证...")
+            total_rounds = len(verify_ns)
+
+            for idx, n in enumerate(verify_ns):
+                # 生成随机商品数据
+                test_items = generate_random_items(n)
+                v_system = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
+                for item_data in test_items:
+                    v_system.add_item(item_data["商品名称"], item_data["商家"],
+                                      item_data["用户原价"], item_data["平台补贴"],
+                                      item_data["用户喜爱度"], item_data["商家佣金"])
+
+                # 分别运行 DP 和暴力回溯
+                dp_score_v, _, dp_time_v = v_system.run_joint_optimization()
+                bf_score_v, _, bf_time_v = v_system.run_brute_force()
+
+                match = abs(dp_score_v - bf_score_v) < 1e-9  # 浮点比较
+                verify_results.append({
+                    "N": n,
+                    "DP得分": f"{dp_score_v:.2f}",
+                    "暴力得分": f"{bf_score_v:.2f}",
+                    "一致": "✅" if match else "❌",
+                    "DP耗时": f"{dp_time_v:.6f}s",
+                    "暴力耗时": f"{bf_time_v:.4f}s",
+                })
+
+                progress_bar.progress((idx + 1) / total_rounds,
+                                      text=f"已验证 {n} 件商品 ({idx+1}/{total_rounds})")
+
+            progress_bar.empty()
+
+            # 展示验证结果
+            df_verify = pd.DataFrame(verify_results)
+            st.dataframe(df_verify, use_container_width=True, hide_index=True)
+
+            # 统计结论
+            all_match = all("✅" in r["一致"] for r in verify_results)
+            if all_match:
+                st.success(
+                    f"✅ **验证通过！** 在 N={verify_min_n}~{verify_max_n} 范围内，"
+                    f"DP 与暴力穷举的结果**完全一致**，DP 实现正确性已验证。"
+                    f"DP 耗时远低于暴力穷举（暴力枚举 2^N 个组合，N={verify_max_n} 时需检查 {2**verify_max_n:,} 种）。")
+            else:
+                st.error("❌ **验证未通过！** 存在 DP 与暴力结果不一致的情况，请检查 DP 实现。")
