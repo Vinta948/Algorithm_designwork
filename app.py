@@ -1,0 +1,374 @@
+import streamlit as st
+import time
+import pandas as pd
+import random
+import matplotlib.pyplot as plt
+import matplotlib
+
+# 修复 matplotlib 中文乱码
+matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun', 'DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号 '-' 显示为方块的问题
+
+# ==========================================
+# 1. 核心算法类（双边多目标背包优化）
+# ==========================================
+class DualSidedECommerceSystem:
+    def __init__(self, user_budget, platform_subsidy_budget, alpha=0.5, beta=0.5):
+        self.user_budget = user_budget                  # 用户消费预算 (W)
+        self.platform_budget = platform_subsidy_budget  # 平台补贴预算 (B)
+        self.alpha = alpha                              # 用户满意度权重
+        self.beta = beta                                # 商家/平台利润权重
+        self.items = []
+
+    def add_item(self, name, merchant, price, subsidy_cost, satisfaction, merchant_profit):
+        self.items.append({
+            "name": name,
+            "merchant": merchant,
+            "price": price,
+            "subsidy": subsidy_cost,
+            "satisfaction": satisfaction,
+            "profit": merchant_profit
+        })
+
+    def run_joint_optimization(self):
+        """核心算法：二维动态规划 (0-1 背包变种)"""
+        N = len(self.items)
+        W = self.user_budget
+        B = self.platform_budget
+        
+        # dp[w][b] 表示在用户预算为w，平台预算为b时能获得的最大复合价值
+        dp = [[0.0] * (B + 1) for _ in range(W + 1)]
+        # keep[i][w][b] 表示在处理完第i个商品，且当前用户预算w和平台预算b时，是否选择了第i个商品
+        keep = [[[False] * (B + 1) for _ in range(W + 1)] for _ in range(N + 1)]
+        
+        start_time = time.perf_counter() # 使用perf_counter获取更高精度时间
+        
+        for i in range(1, N + 1):
+            item = self.items[i - 1]
+            w_item = item["price"]
+            b_item = item["subsidy"]
+            # 复合价值得分 = 消费者体验权重 * 用户喜爱度 + 商家/平台利润权重 * 商家佣金
+            score = self.alpha * item["satisfaction"] + self.beta * item["profit"]
+            
+            for j in range(W, w_item - 1, -1):  # 逆序遍历用户预算，确保每个商品只被选择一次（0-1背包特性）
+                for k in range(B, b_item - 1, -1): # 逆序遍历平台预算
+                    # 如果选择当前商品 i
+                    calc_score = dp[j - w_item][k - b_item] + score
+                    # 如果选择当前商品 i 获得的价值更高
+                    if calc_score > dp[j][k]:
+                        dp[j][k] = calc_score
+                        keep[i][j][k] = True
+                        
+        end_time = time.perf_counter()
+        
+        selected_items = []
+        curr_w, curr_b = W, B
+        # 回溯路径，找到被选中的商品
+        for i in range(N, 0, -1):
+            if keep[i][curr_w][curr_b]:
+                selected_items.append(self.items[i - 1])
+                curr_w -= self.items[i - 1]["price"]
+                curr_b -= self.items[i - 1]["subsidy"]
+                
+        # 翻转列表以按照添加顺序显示
+        selected_items.reverse()
+        
+        return dp[W][B], selected_items, end_time - start_time
+
+    def run_fallback_greedy(self):
+        """对比算法：性价比贪心算法 (按单位成本复合价值比从高到低挑选)"""
+        start_time = time.perf_counter() # 使用perf_counter获取更高精度时间
+        items_copy = [dict(item) for item in self.items] # 复制一份，避免修改原始数据
+        
+        # 计算每个商品的“单位成本复合价值比”
+        for item in items_copy:
+            # 复合价值得分
+            score = self.alpha * item["satisfaction"] + self.beta * item["profit"]
+            # 总成本 = 用户原价 + 平台补贴
+            total_cost = item["price"] + item["subsidy"]
+            item["ratio"] = score / total_cost if total_cost > 0 else 0
+        
+        # 按照复合价值比从高到低排序
+        sorted_items = sorted(items_copy, key=lambda x: x["ratio"], reverse=True)
+        
+        curr_w, curr_b = self.user_budget, self.platform_budget
+        selected_items = []
+        total_score = 0.0
+        
+        for item in sorted_items:
+            # 如果当前商品的用户价格和平台补贴都在各自预算内
+            if curr_w >= item["price"] and curr_b >= item["subsidy"]:
+                selected_items.append(item)
+                curr_w -= item["price"]
+                curr_b -= item["subsidy"]
+                total_score += self.alpha * item["satisfaction"] + self.beta * item["profit"]
+                
+        end_time = time.perf_counter()
+        return total_score, selected_items, end_time - start_time
+
+# ==========================================
+# 2. 辅助函数：生成随机商品数据
+# ==========================================
+def generate_random_items(num_items):
+    generated_items = []
+    for i in range(num_items):
+        name = f"商品_{i+1:04d}" # 格式化商品名称，方便识别
+        merchant = random.choice(["品牌A", "品牌B", "品牌C", "品牌D", "品牌E"])
+        price = random.randint(50, 600)  # 用户原价
+        subsidy = random.randint(10, 100) # 平台补贴
+        satisfaction = random.randint(30, 100) # 用户喜爱度
+        profit = random.randint(20, 120)  # 商家佣金/平台利润
+        generated_items.append({
+            "商品名称": name,
+            "商家": merchant,
+            "用户原价": price,
+            "平台补贴": subsidy,
+            "用户喜爱度": satisfaction,
+            "商家佣金": profit
+        })
+    return generated_items
+
+# ==========================================
+# 3. Streamlit 前端渲染模块
+# ==========================================
+st.set_page_config(page_title="双边大促智能调度系统", layout="wide", initial_sidebar_state="expanded")
+
+st.title("🛒 电商促销场景下的双边智能预算规划系统")
+st.markdown("该系统旨在解决电商大促中，如何在用户预算和平台补贴双重约束下，最大化用户满意度与平台收益的复合价值。")
+st.markdown("---")
+
+# 侧边栏配置
+st.sidebar.header("⚙️ 系统全局调度配置")
+user_b = st.sidebar.slider("👤 用户消费预算 (元)", 100, 5000, 1000, step=50)
+platform_b = st.sidebar.slider("💰 平台补贴资金池 (元)", 50, 1000, 150, step=10)
+
+st.sidebar.subheader("🎯 多目标业务权重调节")
+alpha = st.sidebar.slider("❤️ 消费者体验权重 (用户喜爱度)", 0.0, 1.0, 0.5, step=0.05)
+beta = 1.0 - alpha
+st.sidebar.caption(f"📈 商家与平台收益权重 (佣金利润): **{beta:.2f}**")
+st.sidebar.markdown("---")
+
+# 商品数据字典初始化或从session_state加载
+if 'mock_data' not in st.session_state:
+    st.session_state.mock_data = [
+        {"商品名称": "智能手环", "商家": "小米旗舰店", "用户原价": 299, "平台补贴": 50, "用户喜爱度": 80, "商家佣金": 40},
+        {"商品名称": "降噪耳机", "商家": "索尼专卖店", "用户原价": 799, "平台补贴": 90, "用户喜爱度": 95, "商家佣金": 90},
+        {"商品名称": "机械键盘", "商家": "罗技自营店", "用户原价": 499, "平台补贴": 60, "用户喜爱度": 85, "商家佣金": 70},
+        {"商品名称": "复古水杯", "商家": "生活家居馆", "用户原价": 120, "平台补贴": 20, "用户喜爱度": 40, "商家佣金": 50},
+        {"商品名称": "冲锋外衣", "商家": "耐克折扣店", "用户原价": 350, "平台补贴": 40, "用户喜爱度": 70, "商家佣金": 30},
+        {"商品名称": "坚果礼盒", "商家": "三只松鼠", "用户原价": 99, "平台补贴": 15, "用户喜爱度": 50, "商家佣金": 45},
+    ]
+
+col_left, col_right = st.columns([1, 1.5]) # 调整右侧宽度以容纳更多信息
+
+with col_left:
+    st.subheader("📦 用户购物车候选商品（数据源）")
+    df = pd.DataFrame(st.session_state.mock_data)
+    st.dataframe(df, use_container_width=True) # 使用 use_container_width=True
+
+    with st.expander("➕ 模拟用户向购物车新增候选商品"):
+        with st.form("add_form"):
+            name = st.text_input("商品名称", "无线鼠标")
+            merchant = st.text_input("所属商家", "雷蛇旗舰店")
+            p_user = st.number_input("用户原价 (元)", value=199, min_value=1)
+            p_sub = st.number_input("平台补贴 (元)", value=30, min_value=0)
+            sat = st.slider("用户喜爱度 (1-100)", 1, 100, 60)
+            prof = st.slider("商家佣金 (元)", 1, 100, 35)
+            
+            submit = st.form_submit_button("添加到购物车")
+            if submit:
+                st.session_state.mock_data.append({
+                    "商品名称": name, "商家": merchant, "用户原价": p_user, 
+                    "平台补贴": p_sub, "用户喜爱度": sat, "商家佣金": prof
+                })
+                st.rerun()
+    
+    with st.expander("✨ 批量生成随机商品"):
+        num_random_items_to_generate = st.number_input("要生成的随机商品数量", min_value=1, max_value=200, value=10, step=1)
+        if st.button("生成并替换当前商品列表"):
+            st.session_state.mock_data = generate_random_items(num_random_items_to_generate)
+            st.rerun()
+
+with col_right:
+    st.subheader("🚀 算法引擎双侧协同决策大盘")
+    
+    system = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
+    for row in st.session_state.mock_data:
+        system.add_item(row["商品名称"], row["商家"], row["用户原价"], row["平台补贴"], row["用户喜爱度"], row["商家佣金"])
+    
+    # 运行算法并获取结果
+    dp_score, dp_list, dp_time = system.run_joint_optimization()
+    g_score, g_list, g_time = system.run_fallback_greedy()
+
+    st.markdown("---")
+    st.markdown("### 📊 整体性能对比")
+    st.info(f"复合价值得分 = **{alpha:.2f} * 用户喜爱度 + {beta:.2f} * 商家佣金**")
+
+    col_comp_1, col_comp_2, col_comp_3 = st.columns(3)
+
+    col_comp_1.metric("DP总复合价值得分 (最优)", f"{dp_score:.2f}")
+    col_comp_2.metric("贪心总复合价值得分", f"{g_score:.2f}")
+
+    if dp_score > 0:
+        optimality_gap_percent = ((dp_score - g_score) / dp_score) * 100
+        delta_str = f"-{optimality_gap_percent:.2f}%" if optimality_gap_percent > 0 else "0.00%"
+        col_comp_3.metric("贪心算法与最优解差距", f"{optimality_gap_percent:.2f}%", delta=delta_str, delta_color="inverse")
+    else:
+        col_comp_3.metric("贪心算法与最优解差距", "N/A")
+
+    st.markdown("---")
+    
+    tab1, tab2 = st.tabs(["🤖 方案 A: 动态规划引擎 (完美最优解)", "⚡ 方案 B: 贪心算法引擎 (高并发降级)"])
+    
+    with tab1:
+        st.subheader("动态规划推荐结果")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("计算耗时", f"{dp_time:.6f} 秒")
+        m2.metric("总复合价值得分", f"{dp_score:.2f}")
+        m3.metric("消费者总满意度", f"{sum(x['satisfaction'] for x in dp_list):.0f}")
+        m4.metric("平台总佣金收益", f"¥{sum(x['profit'] for x in dp_list):.0f}")
+        
+        u_spend = sum(x['price'] for x in dp_list)
+        p_spend = sum(x['subsidy'] for x in dp_list)
+        st.progress(min(u_spend / user_b, 1.0) if user_b > 0 else 0, text=f"👤 用户预算占用: **{u_spend} / {user_b} 元**")
+        st.progress(min(p_spend / platform_b, 1.0) if platform_b > 0 else 0, text=f"💰 平台补贴占用: **{p_spend} / {platform_b} 元**")
+        
+        st.write("📋 **智能推荐购买组合：**")
+        if dp_list:
+            res_df = pd.DataFrame(dp_list)[["name", "merchant", "price", "subsidy", "satisfaction", "profit"]]
+            res_df.columns = ["商品名称", "商家", "用户原价(元)", "平台补贴(元)", "用户喜爱度", "商家佣金(元)"]
+            st.dataframe(res_df, use_container_width=True)
+        else:
+            st.warning("当前预算过低，无法推荐商品组合，请调整预算或商品。")
+            
+    with tab2:
+        st.subheader("贪心算法推荐结果")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("计算耗时", f"{g_time:.6f} 秒")
+        m2.metric("总复合价值得分", f"{g_score:.2f}")
+        m3.metric("消费者总满意度", f"{sum(x['satisfaction'] for x in g_list):.0f}")
+        m4.metric("平台总佣金收益", f"¥{sum(x['profit'] for x in g_list):.0f}")
+        
+        u_spend_g = sum(x['price'] for x in g_list)
+        p_spend_g = sum(x['subsidy'] for x in g_list)
+        st.progress(min(u_spend_g / user_b, 1.0) if user_b > 0 else 0, text=f"👤 用户预算占用: **{u_spend_g} / {user_b} 元**")
+        st.progress(min(p_spend_g / platform_b, 1.0) if platform_b > 0 else 0, text=f"💰 平台补贴占用: **{p_spend_g} / {platform_b} 元**")
+        
+        st.write("📋 **贪心算法推荐组合：**")
+        if g_list:
+            res_df_g = pd.DataFrame(g_list)[["name", "merchant", "price", "subsidy", "satisfaction", "profit"]]
+            res_df_g.columns = ["商品名称", "商家", "用户原价(元)", "平台补贴(元)", "用户喜爱度", "商家佣金(元)"]
+            st.dataframe(res_df_g, use_container_width=True)
+        else:
+            st.warning("当前预算过低，贪心算法未找到推荐组合。")
+
+st.markdown("---")
+st.subheader("📈 算法性能曲线分析 (耗时 vs. 商品数量)")
+
+# ---- 说明区：告诉用户这个模块和上面的关系 ----
+col_explain, col_config = st.columns([1, 1.2])
+with col_explain:
+    st.markdown(f"""
+    **这个模块和上面的关系：**
+    - 沿用左侧栏的 **预算**（用户 ¥{user_b} / 平台 ¥{platform_b}）和 **权重**（α={alpha:.2f}, β={beta:.2f}）
+    - 但**不使用**上方购物车里的商品 — 而是按 x 轴指定的商品数量，**随机生成**一批新商品来测试
+    - 对每个「商品数量」都跑一遍 DP 和贪心，记录耗时，画出曲线
+
+    **目的：** 看两种算法随着商品变多，耗时分别怎么增长。
+    """)
+
+with col_config:
+    st.caption("👇 下面三个滑块控制 x 轴取哪些测试点")
+    benchmark_min_items = st.slider(
+        "从多少件商品开始测", 5, 200, 10, step=5,
+        help="x 轴起点：先用 10 件商品跑一次测试")
+    benchmark_max_items = st.slider(
+        "最多测到多少件商品", benchmark_min_items + 5, 500, 50, step=5,
+        help="x 轴终点：商品越多 DP 越慢，建议从 50 开始尝试")
+    benchmark_step = st.slider(
+        "每隔多少件商品测一次", 5, 50, 10, step=5,
+        help="比如起点 10、终点 50、步长 10 → 测 10, 20, 30, 40, 50 这 5 个点")
+
+run_benchmark_button = st.button("🚀 运行性能基准测试并绘制曲线")
+
+if run_benchmark_button:
+    item_counts = list(range(benchmark_min_items, benchmark_max_items + 1, benchmark_step))
+    if not item_counts:
+        item_counts = [benchmark_min_items]
+
+    dp_times = []
+    greedy_times = []
+
+    my_bar = st.progress(0, text="正在运行基准测试...")
+
+    for i, num_items in enumerate(item_counts):
+        temp_items_data = generate_random_items(num_items)
+        temp_system = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
+        for item_data in temp_items_data:
+            temp_system.add_item(item_data["商品名称"], item_data["商家"], item_data["用户原价"],
+                                 item_data["平台补贴"], item_data["用户喜爱度"], item_data["商家佣金"])
+
+        try:
+            _, _, dp_t = temp_system.run_joint_optimization()
+            dp_times.append(dp_t)
+        except (MemoryError, Exception):
+            st.error(f"动态规划在 {num_items} 件商品时超出计算限制，请减小商品数量或预算。")
+            dp_times.append(float('nan'))
+
+        _, _, greedy_t = temp_system.run_fallback_greedy()
+        greedy_times.append(greedy_t)
+
+        my_bar.progress((i + 1) / len(item_counts),
+                        text=f"已完成 {i+1}/{len(item_counts)} 轮 ({num_items}件商品)")
+
+    my_bar.empty()
+
+    # ---- 数据表格：直接展示实际耗时数值，解决"图上看着都是 0"的问题 ----
+    st.caption("📋 各测试点的实际耗时数据")
+    import pandas as pd
+    df_bench = pd.DataFrame({
+        "商品数量": item_counts,
+        "DP 耗时 (秒)": [f"{t:.6f}" for t in dp_times],
+        "贪心耗时 (秒)": [f"{t:.6f}" for t in greedy_times],
+        "DP / 贪心 (倍数)": [
+            f"{dp_times[i]/greedy_times[i]:.0f}x" if greedy_times[i] > 1e-9 else "N/A"
+            for i in range(len(item_counts))
+        ]
+    })
+    st.dataframe(df_bench, use_container_width=True, hide_index=True)
+
+    # ---- 图表：单张对数坐标图，不再分左右 ----
+    min_positive = 1e-9
+    dp_clean = [max(t, min_positive) for t in dp_times]
+    greedy_clean = [max(t, min_positive) for t in greedy_times]
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    ax.plot(item_counts, dp_clean,
+            label="动态规划 (DP)", marker='o', linestyle='-', color='#1f77b4', linewidth=2)
+    ax.plot(item_counts, greedy_clean,
+            label="贪心算法 (Greedy)", marker='s', linestyle='--', color='#d62728', linewidth=2)
+
+    ax.set_xlabel("商品数量（随机生成的商品个数）", fontsize=12)
+    ax.set_ylabel("运行耗时（秒，对数刻度）", fontsize=12)
+    ax.set_title(
+        f"算法耗时对比 — 预算: 用户¥{user_b} / 平台¥{platform_b}  |  权重: α={alpha:.2f} β={beta:.2f}",
+        fontsize=13, fontweight='bold')
+    ax.set_yscale('log')
+    ax.legend(fontsize=12, loc='upper left')
+    ax.grid(True, linestyle='--', alpha=0.4, which='both')
+
+    # 在每个数据点旁边标注数值，解决"图上分不清"的问题
+    for x, y in zip(item_counts, dp_clean):
+        ax.annotate(f'{y:.4f}s', (x, y), textcoords="offset points",
+                    xytext=(0, 10), fontsize=7, color='#1f77b4', ha='center')
+    for x, y in zip(item_counts, greedy_clean):
+        ax.annotate(f'{y:.6f}s', (x, y), textcoords="offset points",
+                    xytext=(0, -14), fontsize=7, color='#d62728', ha='center')
+
+    plt.tight_layout()
+    st.pyplot(fig)
+
+    st.info("💡 **怎么看这张图：** 纵轴是对数刻度，DP 曲线（蓝）随商品增加迅速上升，贪心曲线（红）几乎平躺。"
+            "这说明 DP 时间复杂度高但结果最优，贪心几乎不耗时但结果是近似解。"
+            "上方表格列出了每个测试点的精确耗时和倍数关系。")
