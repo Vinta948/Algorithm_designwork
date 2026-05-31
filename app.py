@@ -637,47 +637,6 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
         else:
             st.error("❌ 两种实现结果不一致，请检查！")
 
-        # 极限压测
-        st.markdown("---")
-        st.markdown("### 🔥 极限压测：N 很大时标准 DP 撑得住吗？")
-        stress_n = st.number_input("压测 N（建议 ≥ 200）", min_value=100, max_value=500,
-                                   value=250, step=50, key="stress_n")
-
-        if st.button("⚡ 运行极限压测", key="stress_btn"):
-            st.session_state.space_opt_expanded = True
-            stress_items = generate_random_items(stress_n)
-            # 标准 DP
-            s_std = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
-            for item_data in stress_items:
-                s_std.add_item(item_data["商品名称"], item_data["商家"],
-                               item_data["用户原价"], item_data["平台补贴"],
-                               item_data["用户喜爱度"], item_data["商家佣金"])
-            try:
-                _, _, t_std = s_std.run_joint_optimization()
-                std_ok = f"✅ 完成（{t_std:.4f}s）"
-            except MemoryError:
-                std_ok = "❌ 内存不足"
-            except Exception as e:
-                std_ok = f"❌ {type(e).__name__}"
-
-            # 优化 DP
-            s_opt = DualSidedECommerceSystem(user_b, platform_b, alpha, beta)
-            for item_data in stress_items:
-                s_opt.add_item(item_data["商品名称"], item_data["商家"],
-                               item_data["用户原价"], item_data["平台补贴"],
-                               item_data["用户喜爱度"], item_data["商家佣金"])
-            try:
-                _, _, t_opt = s_opt.run_optimized_dp()
-                opt_ok = f"✅ 完成（{t_opt:.4f}s）"
-            except MemoryError:
-                opt_ok = "❌ 内存不足"
-            except Exception as e:
-                opt_ok = f"❌ {type(e).__name__}"
-
-            col_s1, col_s2 = st.columns(2)
-            col_s1.metric("标准 DP（O(N·W·B) 空间）", std_ok)
-            col_s2.metric("优化 DP（O(W·B) 空间）", opt_ok)
-
     # 最终选择的说明
     st.info(
         "💡 **我们的选择：主界面使用标准 DP。**\n\n"
