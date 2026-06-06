@@ -361,11 +361,17 @@ with col_right:
     st.markdown("---")
     st.markdown("### 📊 两种算法得分对比")
 
+    # 公式说明
+    st.markdown(
+        f"📐 **复合价值得分 = {alpha:.2f} × 用户喜爱度 + {beta:.2f} × 商家佣金**\n\n"
+        f"（α={alpha:.2f} 为消费者体验权重，β={beta:.2f} 为商家/平台收益权重，两者之和恒为 1）"
+    )
+
     col_comp_1, col_comp_2, col_comp_3 = st.columns(3)
 
     # DP 永远是最优解（或并列最优）
     col_comp_1.metric(
-        label="🏆 优化 DP（空间 O(W*B)，数学最优解）",
+        label="🏆 优化 DP（数学最优解）",
         value=f"{dp_score:.2f} 分",
         help="分治回溯版 DP，空间从 O(N*W*B) 压缩到 O(W*B)，结果与标准 DP 完全一致")
 
@@ -380,21 +386,21 @@ with col_right:
         gap = dp_score - g_score
         gap_pct = (gap / dp_score) * 100
         col_comp_3.metric(
-            label="📉 贪心落后 DP 多少",
-            value=f"{gap_pct:.1f}%（少 {gap:.2f} 分）",
-            delta=f"DP 比贪心高 {gap:.2f} 分" if gap > 0 else "两种算法平手 ✓",
+            label="📉 贪心落后 DP",
+            value=f"{gap_pct:.1f}%",
+            delta=f"少 {gap:.2f} 分" if gap > 0 else "两种算法平手 ✓",
             help="这个值越小 → 贪心越接近最优解；越大 → 贪心牺牲的质量越多。0% 表示贪心也找到了最优解。")
     else:
-        col_comp_3.metric("📉 贪心落后 DP 多少", "N/A")
+        col_comp_3.metric("📉 贪心落后 DP", "N/A")
 
     # 一句话结论
     if dp_score > 0 and g_score > 0:
         if gap == 0:
             st.success("✅ 结论：贪心也找到了最优解，两种算法效果完全相同。")
         elif gap_pct < 5:
-            st.success(f"✅ 结论：DP 是最优解（{dp_score:.2f} 分），贪心仅落后 {gap_pct:.1f}%，贪心在这个场景下质量很高。")
+            st.success(f"✅ 结论：优化 DP 最优解 {dp_score:.2f} 分，贪心仅落后 {gap_pct:.1f}%（少 {gap:.2f} 分），贪心在这个场景下质量很高。")
         else:
-            st.warning(f"⚠️ 结论：DP 最优解 {dp_score:.2f} 分，贪心落后 {gap_pct:.1f}%（少 {gap:.2f} 分）。追求收益时建议用 DP，追求速度时贪心可接受。")
+            st.warning(f"⚠️ 结论：优化 DP 最优解 {dp_score:.2f} 分，贪心落后 {gap_pct:.1f}%（少 {gap:.2f} 分）。追求收益时建议用优化 DP，追求速度时贪心可接受。")
 
     st.markdown("---")
     
