@@ -532,7 +532,7 @@ if run_benchmark_button:
     ax.set_xlabel("商品数量（随机生成的商品个数）", fontsize=12)
     ax.set_ylabel("运行耗时（秒，对数刻度）", fontsize=12)
     ax.set_title(
-        f"算法耗时对比 — 预算: 用户¥{user_b} / 平台¥{platform_b}  |  权重: α={alpha:.2f} β={beta:.2f}",
+        f"算法耗时对比 — 预算: 用户{user_b}元 / 平台{platform_b}元  |  权重: α={alpha:.2f} β={beta:.2f}",
         fontsize=13, fontweight='bold')
     ax.set_yscale('log')
     ax.legend(fontsize=12, loc='upper left')
