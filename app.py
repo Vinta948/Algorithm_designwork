@@ -354,8 +354,8 @@ with col_right:
     for row in st.session_state.mock_data:
         system.add_item(row["商品名称"], row["商家"], row["用户原价"], row["平台补贴"], row["用户喜爱度"], row["商家佣金"])
     
-    # 运行算法并获取结果
-    dp_score, dp_list, dp_time = system.run_joint_optimization()
+    # 运行算法并获取结果（主推优化 DP：空间 O(W*B)，分治回溯）
+    dp_score, dp_list, dp_time = system.run_optimized_dp()
     g_score, g_list, g_time = system.run_fallback_greedy()
 
     st.markdown("---")
@@ -365,9 +365,9 @@ with col_right:
 
     # DP 永远是最优解（或并列最优）
     col_comp_1.metric(
-        label="🏆 DP 动态规划（数学最优解）",
+        label="🏆 优化 DP（空间 O(W*B)，数学最优解）",
         value=f"{dp_score:.2f} 分",
-        help="在预算约束下，DP 保证找到全局最优组合，得分是所有可行解中最高的")
+        help="分治回溯版 DP，空间从 O(N*W*B) 压缩到 O(W*B)，结果与标准 DP 完全一致")
 
     # 贪心是近似解
     col_comp_2.metric(
@@ -398,10 +398,10 @@ with col_right:
 
     st.markdown("---")
     
-    tab1, tab2 = st.tabs(["🤖 方案 A: 动态规划引擎 (完美最优解)", "⚡ 方案 B: 贪心算法引擎 (高并发降级)"])
-    
+    tab1, tab2 = st.tabs(["🤖 方案 A: 优化 DP 引擎 (分治回溯，空间优化)", "⚡ 方案 B: 贪心算法引擎 (高并发降级)"])
+
     with tab1:
-        st.subheader("动态规划推荐结果")
+        st.subheader("优化 DP 推荐结果")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("计算耗时", f"{dp_time:.6f} 秒")
         m2.metric("总复合价值得分", f"{dp_score:.2f}")
@@ -452,9 +452,9 @@ with col_explain:
     **这个模块和上面的关系：**
     - 沿用左侧栏的 **预算**（用户 ¥{user_b} / 平台 ¥{platform_b}）和 **权重**（α={alpha:.2f}, β={beta:.2f}）
     - 但**不使用**上方购物车里的商品 — 而是按 x 轴指定的商品数量，**随机生成**一批新商品来测试
-    - 对每个「商品数量」都跑一遍 DP 和贪心，记录耗时，画出曲线
+    - 对每个「商品数量」都跑一遍 **优化 DP** 和**贪心**，记录耗时，画出曲线
 
-    **目的：** 看两种算法随着商品变多，耗时分别怎么增长。
+    **目的：** 对比两种主推算法（优化 DP vs 贪心）的时间复杂度差异。
     """)
 
 with col_config:
@@ -489,7 +489,7 @@ if run_benchmark_button:
                                  item_data["平台补贴"], item_data["用户喜爱度"], item_data["商家佣金"])
 
         try:
-            _, _, dp_t = temp_system.run_joint_optimization()
+            _, _, dp_t = temp_system.run_optimized_dp()
             dp_times.append(dp_t)
         except (MemoryError, Exception):
             st.error(f"动态规划在 {num_items} 件商品时超出计算限制，请减小商品数量或预算。")
@@ -508,9 +508,9 @@ if run_benchmark_button:
     import pandas as pd
     df_bench = pd.DataFrame({
         "商品数量": item_counts,
-        "DP 耗时 (秒)": [f"{t:.6f}" for t in dp_times],
-        "贪心耗时 (秒)": [f"{t:.6f}" for t in greedy_times],
-        "DP / 贪心 (倍数)": [
+        "优化DP耗时(秒)": [f"{t:.6f}" for t in dp_times],
+        "贪心耗时(秒)": [f"{t:.6f}" for t in greedy_times],
+        "优化DP/贪心(倍数)": [
             f"{dp_times[i]/greedy_times[i]:.0f}x" if greedy_times[i] > 1e-9 else "N/A"
             for i in range(len(item_counts))
         ]
@@ -525,7 +525,7 @@ if run_benchmark_button:
     fig, ax = plt.subplots(figsize=(12, 5))
 
     ax.plot(item_counts, dp_clean,
-            label="动态规划 (DP)", marker='o', linestyle='-', color='#1f77b4', linewidth=2)
+            label="优化 DP（分治回溯）", marker='o', linestyle='-', color='#1f77b4', linewidth=2)
     ax.plot(item_counts, greedy_clean,
             label="贪心算法 (Greedy)", marker='s', linestyle='--', color='#d62728', linewidth=2)
 
@@ -549,8 +549,8 @@ if run_benchmark_button:
     plt.tight_layout()
     st.pyplot(fig)
 
-    st.info("💡 **怎么看这张图：** 纵轴是对数刻度，DP 曲线（蓝）随商品增加迅速上升，贪心曲线（红）几乎平躺。"
-            "这说明 DP 时间复杂度高但结果最优，贪心几乎不耗时但结果是近似解。"
+    st.info("💡 **怎么看这张图：** 纵轴是对数刻度，优化 DP 曲线（蓝）随商品增加上升，贪心曲线（红）几乎平躺。"
+            "优化 DP 时间复杂度 O(N·W·B·logN) 高于贪心 O(N·logN)，但结果是数学最优解，贪心是近似解。"
             "上方表格列出了每个测试点的精确耗时和倍数关系。")
 
 # ==========================================
@@ -563,10 +563,13 @@ if 'space_opt_expanded' not in st.session_state:
 with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（Hirschberg 分治回溯）",
                  expanded=st.session_state.space_opt_expanded):
     st.markdown("""
-    **这个面板展示我们的算法迭代思考过程**，不是最终使用的版本。
+    **这个面板展示从标准 DP 到空间优化 DP 的迭代过程**（空间复杂度优化）。
 
-    **标准 DP**：维护 `keep[N][W][B]` 记录每一步的选择 → 能回溯选品，但空间随商品数线性增长，N 大时内存爆炸。
-    **空间优化 DP**：用分治回溯替代 keep 数组 → 空间降为 O(W×B)，时间约 2 倍，结果与标准 DP **完全一致**。
+    主界面使用的**优化 DP** 就是从这里迭代而来：
+    - **标准 DP**：维护 `keep[N][W][B]` 记录每一步选择 → 能回溯选品，空间 O(N×W×B)，N 大时内存爆炸
+    - **优化 DP（主推）**：用分治回溯替代 keep 数组 → 空间 O(W×B)，时间约 2 倍，结果与标准 DP **完全一致**
+
+    下面对比两者在不同商品数量下的耗时和内存差异，验证优化的必要性。
     """)
 
     st.caption(f"预算沿用左侧栏：用户 ¥{user_b} / 平台 ¥{platform_b}  |  权重 α={alpha:.2f} β={beta:.2f}")
@@ -650,9 +653,9 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
 
     # 最终选择的说明
     st.info(
-        "💡 **我们的选择：主界面使用标准 DP。**\n\n"
-        "在当前使用场景下（购物车通常不超过 100 件商品），标准 DP 的空间占用完全可控 "
-        "（约 50~100 MB），且代码简洁、易于理解。"
+        "💡 **我们的选择：主界面使用优化 DP（分治回溯版）。**\n\n"
+        "优化 DP 空间从 O(N×W×B) 降至 O(W×B)，在当前使用场景下内存占用稳定在约 1~2 MB，"
+        "且结果与标准 DP 完全一致。虽然时间约为标准 DP 的 2 倍，但用户无感知（毫秒级差异）。"
         "空间优化版证明了我们具备深度优化能力——当未来业务规模增长到 N≥200 时，"
         "可无缝切换到优化版，两者结果完全一致。"
         "**知道什么时候该优化、什么时候不必过度设计，本身就是一种工程判断力。**"
@@ -664,11 +667,11 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
 st.markdown("---")
 with st.expander("🔬 DP 正确性验证 — 暴力回溯穷举（独立验证工具）", expanded=False):
     st.markdown("""
-    **这个面板不参与商品推荐**，仅用于验证 DP 算法的正确性。
+    **这个面板不参与商品推荐**，仅用于验证优化 DP 算法的正确性。
 
     **原理：** 暴力回溯枚举商品的所有子集（共 2^N 种），检查每种组合是否满足约束，找到真正的全局最优解。
     由于复杂度为 O(2^N)，**仅适用于小规模商品数（建议 N ≤ 15）**。
-    在小规模下对比 DP 与暴力穷举的结果，若一致则证明 DP 实现正确。
+    在小规模下对比优化 DP 与暴力穷举的结果，若一致则证明优化 DP 实现正确。
     """)
 
     col_v1, col_v2, col_v3 = st.columns(3)
@@ -703,17 +706,17 @@ with st.expander("🔬 DP 正确性验证 — 暴力回溯穷举（独立验证�
                                       item_data["用户原价"], item_data["平台补贴"],
                                       item_data["用户喜爱度"], item_data["商家佣金"])
 
-                # 分别运行 DP 和暴力回溯
-                dp_score_v, _, dp_time_v = v_system.run_joint_optimization()
+                # 分别运行优化 DP 和暴力回溯
+                dp_score_v, _, dp_time_v = v_system.run_optimized_dp()
                 bf_score_v, _, bf_time_v = v_system.run_brute_force()
 
                 match = abs(dp_score_v - bf_score_v) < 1e-9  # 浮点比较
                 verify_results.append({
                     "N": n,
-                    "DP得分": f"{dp_score_v:.2f}",
+                    "优化DP得分": f"{dp_score_v:.2f}",
                     "暴力得分": f"{bf_score_v:.2f}",
                     "一致": "✅" if match else "❌",
-                    "DP耗时": f"{dp_time_v:.6f}s",
+                    "优化DP耗时": f"{dp_time_v:.6f}s",
                     "暴力耗时": f"{bf_time_v:.4f}s",
                 })
 
@@ -731,39 +734,39 @@ with st.expander("🔬 DP 正确性验证 — 暴力回溯穷举（独立验证�
             if all_match:
                 st.success(
                     f"✅ **验证通过！** 在 N={verify_min_n}~{verify_max_n} 范围内，"
-                    f"DP 与暴力穷举的结果**完全一致**，DP 实现正确性已验证。"
+                    f"优化 DP 与暴力穷举的结果**完全一致**，优化 DP 实现正确性已验证。"
                 )
             else:
-                st.error("❌ **验证未通过！** 存在 DP 与暴力结果不一致的情况，请检查 DP 实现。")
+                st.error("❌ **验证未通过！** 存在优化 DP 与暴力结果不一致的情况，请检查算法实现。")
 
             # 补充说明：为什么小 N 时暴力可能比 DP 快
-            with st.expander("💡 为什么暴力回溯在小规模下可能比 DP 更快？", expanded=False):
+            with st.expander("💡 为什么暴力回溯在小规模下可能比优化 DP 更快？", expanded=False):
                 st.markdown(f"""
                 **这是正常现象，反而体现了对算法复杂度的深层理解。**
 
                 | 算法 | 复杂度 | 当前瓶颈在哪 |
                 |------|--------|-------------|
-                | DP | O(N × W × B) | 商品数 **× 预算两条维度** |
+                | 优化 DP | O(N × W × B × logN) | 商品数 **× 预算两条维度** + 分治递归 |
                 | 暴力 | O(2^N) | **只看商品数**，与预算无关 |
 
                 当前左侧栏预算设置较大（用户 ¥{user_b} / 平台 ¥{platform_b}）：
-                - DP 需要填充一张 **{user_b} × {platform_b} = {user_b * platform_b:,}** 格的二维表格
+                - 优化 DP 每层递归需填充一张 **{user_b} × {platform_b} = {user_b * platform_b:,}** 格的表格
                 - 暴力只需枚举 **2^N** 种组合
 
-                **当 N 小而预算大时，DP 填表格的工作量反而超过了暴力穷举。**
+                **当 N 小而预算大时，优化 DP 填表格的工作量反而超过了暴力穷举。**
                 但随着 N 增大，暴力指数爆炸的本质会迅速暴露：
 
                 | N | 暴力组合数 | DP 表格大小 | 谁快？ |
                 |---|----------|------------|--------|
                 | 10 | 1,024 | {user_b * platform_b:,} | 暴力赢（表格太大） |
                 | 15 | 32,768 | {user_b * platform_b:,} | 基本持平 |
-                | 18 | 262,144 | {user_b * platform_b:,} | DP 反超 |
-                | 20 | **1,048,576** | {user_b * platform_b:,} | DP 大赢 |
+                | 18 | 262,144 | {user_b * platform_b:,} | 优化 DP 反超 |
+                | 20 | **1,048,576** | {user_b * platform_b:,} | 优化 DP 大赢 |
                 | 25 | **33,554,432** | {user_b * platform_b:,} | 暴力彻底跑不动 |
 
-                **N 翻一倍，暴力慢 1000 倍，DP 只慢约 1 倍**——这就是指数增长 vs 多项式增长的本质差异。
+                **N 翻一倍，暴力慢 1000 倍，优化 DP 只慢约 1 倍**——这就是指数增长 vs 多项式增长的本质差异。
 
-                > 现实中电商场景下商品数动辄成千上万，暴力在 N=25 时已崩溃，而 DP 稳定运行。
-                > DP 的"慢"只在极端小 N + 大预算的罕见窗口出现，且慢的幅度在毫秒级，完全可接受。
-                > **工程上永远选 DP**：不是因为每个 case 都最快，而是所有 case 都**可控**。
+                > 现实中电商场景下商品数动辄成千上万，暴力在 N=25 时已崩溃，而优化 DP 稳定运行。
+                > 优化 DP 的"慢"只在极端小 N + 大预算的罕见窗口出现，且慢的幅度在毫秒级，完全可接受。
+                > **工程上永远选优化 DP**：不是因为每个 case 都最快，而是所有 case 都**可控**。
                 """)
