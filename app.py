@@ -4,10 +4,19 @@ import pandas as pd
 import random
 import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.font_manager as fm
+import os
 
-# 修复 matplotlib 中文乱码
-matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun', 'DejaVu Sans']
-matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号 '-' 显示为方块的问题
+# 修复 matplotlib 中文乱码 — 从打包的字体文件加载（兼容 Windows 本地 + Linux 云端）
+_font_path = os.path.join(os.path.dirname(__file__), "fonts", "simhei.ttf")
+if os.path.exists(_font_path):
+    fm.fontManager.addfont(_font_path)
+    _font_prop = fm.FontProperties(fname=_font_path)
+    matplotlib.rcParams['font.sans-serif'] = [_font_prop.get_name()] + matplotlib.rcParams['font.sans-serif']
+else:
+    # 字体文件不存在时回退到系统字体
+    matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun', 'DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False
 
 # ==========================================
 # 1. 核心算法类（双边多目标背包优化）
