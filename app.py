@@ -535,6 +535,10 @@ if run_benchmark_button:
         f"算法耗时对比 — 预算: 用户{user_b}元 / 平台{platform_b}元  |  权重: α={alpha:.2f} β={beta:.2f}",
         fontsize=13, fontweight='bold')
     ax.set_yscale('log')
+    # 修复纵坐标刻度显示：避免 Unicode 上标字符（SimHei 不支持），改用纯 ASCII 格式
+    import matplotlib.ticker as ticker
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y, _: f'{y:g}'))
+    ax.yaxis.set_minor_formatter(ticker.NullFormatter())
     ax.legend(fontsize=12, loc='upper left')
     ax.grid(True, linestyle='--', alpha=0.4, which='both')
 
@@ -653,12 +657,12 @@ with st.expander("💾 DP 空间优化对比 — 标准版 vs 空间优化版（
 
     # 最终选择的说明
     st.info(
-        "💡 **我们的选择：主界面使用优化 DP（分治回溯版）。**\n\n"
-        "优化 DP 空间从 O(N×W×B) 降至 O(W×B)，在当前使用场景下内存占用稳定在约 1~2 MB，"
-        "且结果与标准 DP 完全一致。虽然时间约为标准 DP 的 2 倍，但用户无感知（毫秒级差异）。"
-        "空间优化版证明了我们具备深度优化能力——当未来业务规模增长到 N≥200 时，"
-        "可无缝切换到优化版，两者结果完全一致。"
-        "**知道什么时候该优化、什么时候不必过度设计，本身就是一种工程判断力。**"
+        "💡 **迭代过程总结：**\n\n"
+        "我们最初实现了标准 DP（教科书版），但在分析其空间复杂度 O(N×W×B) 时发现："
+        "当商品数 N 增大时，keep 数组会占用数百 MB 内存（见上方对比表格）。"
+        "为此我们实现了基于 Hirschberg 分治回溯的空间优化版，将空间降至 O(W×B)，"
+        "结果与标准 DP 完全一致，时间代价约 2 倍（毫秒级差异，用户无感知）。\n\n"
+        "主界面使用的就是优化 DP——**在算法设计中，主动优化空间复杂度是比被动等待崩溃更成熟的工程实践。**"
     )
 
 # ==========================================
